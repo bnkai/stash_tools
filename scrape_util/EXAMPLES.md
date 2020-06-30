@@ -28,6 +28,6 @@ reads the performers_freeones.yml file and compares each entry there with "fresh
  
 **NOTES**
 
- some sites use caching for images (with different quality) so while images are visually the same the md5 can be different 
+ some sites use caching or cdns for images (with different quality) so while images are visually the same the md5 can be different 
  
  use `-stash="http://mystash.com:9998"` to set stash's url , default is  `"http://localhost:9998"`

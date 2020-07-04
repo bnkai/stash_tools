@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"reflect"
 	"regexp"
@@ -21,6 +22,7 @@ import (
 const defaultStashURL = "http://localhost:9998"
 
 var verbose = false
+var saveImages = false
 
 type stringMap map[string]string
 
@@ -128,7 +130,7 @@ func (p *ScrapedPerformer) toMap() *stringMap {
 func (m *stringMap) printMap() {
 	for k, v := range *m {
 		if k == "Image" {
-			md5, err := MD5FromBase64(v)
+			md5, _, err := MD5FromBase64(v)
 			if err != nil {
 				fmt.Printf("Error decoding base64 :%s\n", err)
 				v = ""
@@ -314,7 +316,7 @@ func reloadStashScrapers(stash string) bool {
 	return bool(m.ReloadScrapers)
 }
 
-func scrapePerformerByUrl(url string, stash string) *ScrapedPerformer {
+func scrapePerformerByUrl(url string, stash string, saveImg bool) *ScrapedPerformer {
 	client := getStashClient(stash)
 	var q struct {
 		ScrapedPerformer `graphql:"scrapePerformerURL(url: $performerUrl)" yaml:"Performer"`
@@ -333,20 +335,27 @@ func scrapePerformerByUrl(url string, stash string) *ScrapedPerformer {
 	// instead of getting the whole image content
 	// use the md5 of the image
 	if q.Image != nil {
-		md5, err := MD5FromBase64(*q.Image)
+		md5, data, err := MD5FromBase64(*q.Image)
 		if err == nil {
 			*q.Image = md5
+			if saveImg {
+				err = ioutil.WriteFile(md5+getExt(&data), data, 0644)
+				if err != nil {
+					fmt.Printf("Error writing image file :%s \n", err)
+				}
+			}
+
 		}
 	}
 	return &q.ScrapedPerformer
 
 }
 
-func scrapePerformersByUrl(urls []string, stash string) []byte {
+func scrapePerformersByUrl(urls []string, stash string, saveImg bool) []byte {
 	var performers []ScrapePerformerData
 
 	for _, url := range urls {
-		performer := scrapePerformerByUrl(url, stash)
+		performer := scrapePerformerByUrl(url, stash, saveImages)
 		t := ScrapePerformerData{PerformerURL: url, PerformerData: *performer}
 		performers = append(performers, t)
 	}
@@ -355,7 +364,7 @@ func scrapePerformersByUrl(urls []string, stash string) []byte {
 	return dataPerformer
 }
 
-func scrapeSceneByUrl(url string, stash string) *ScrapedScene {
+func scrapeSceneByUrl(url string, stash string, saveImg bool) *ScrapedScene {
 	client := getStashClient(stash)
 
 	var q struct {
@@ -375,18 +384,25 @@ func scrapeSceneByUrl(url string, stash string) *ScrapedScene {
 	// instead of getting the whole image content
 	// use the md5 of the image
 	if q.Image != nil {
-		md5, err := MD5FromBase64(*q.Image)
+		md5, data, err := MD5FromBase64(*q.Image)
 		if err == nil {
 			*q.Image = md5
 		}
+		if saveImg {
+			err = ioutil.WriteFile(md5+getExt(&data), data, 0644)
+			if err != nil {
+				fmt.Printf("Error writing image file :%s \n", err)
+			}
+		}
+
 	}
 	return &q.ScrapedScene
 }
 
-func scrapeScenesByUrl(urls []string, stash string) []byte {
+func scrapeScenesByUrl(urls []string, stash string, saveImg bool) []byte {
 	var scenes []ScrapeSceneData
 	for _, url := range urls {
-		scene := scrapeSceneByUrl(url, stash)
+		scene := scrapeSceneByUrl(url, stash, saveImg)
 		t := ScrapeSceneData{SceneURL: url, SceneData: *scene}
 		scenes = append(scenes, t)
 
@@ -399,9 +415,9 @@ func scrapeScenesByUrl(urls []string, stash string) []byte {
 
 }
 
-func MD5FromBase64(imageString string) (string, error) {
+func MD5FromBase64(imageString string) (string, []byte, error) {
 	if imageString == "" {
-		return "", fmt.Errorf("empty image string")
+		return "", nil, fmt.Errorf("empty image string")
 	}
 
 	regex := regexp.MustCompile(`^data:.+\/(.+);base64,(.*)$`)
@@ -415,9 +431,9 @@ func MD5FromBase64(imageString string) (string, error) {
 
 	data, err := base64.StdEncoding.DecodeString(encodedString)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
-	return fmt.Sprintf("%x", md5.Sum(data)), nil
+	return fmt.Sprintf("%x", md5.Sum(data)), data, nil
 
 }
 func readLines(path string) ([]string, error) {
@@ -433,6 +449,29 @@ func readLines(path string) ([]string, error) {
 		lines = append(lines, scanner.Text())
 	}
 	return lines, scanner.Err()
+}
+
+func getExt(data *[]byte) string {
+	var extension = ""
+	if data != nil {
+		mime := http.DetectContentType(*data)
+		switch mime {
+		case "image/jpeg":
+			extension = ".jpg"
+		case "image/bmp":
+			extension = ".bmp"
+		case "image/png":
+			extension = ".png"
+		case "image/gif":
+			extension = ".gif"
+		case "image/webp":
+			extension = ".webp"
+		default:
+			extension = ""
+		}
+
+	}
+	return extension
 }
 
 func generate(scrapeDefault bool, urls []string, output *string, stash *string) {
@@ -456,9 +495,9 @@ func generate(scrapeDefault bool, urls []string, output *string, stash *string) 
 
 	var data []byte
 	if !scrapeDefault {
-		data = scrapePerformersByUrl(urls, stashURL)
+		data = scrapePerformersByUrl(urls, stashURL, saveImages)
 	} else {
-		data = scrapeScenesByUrl(urls, stashURL)
+		data = scrapeScenesByUrl(urls, stashURL, saveImages)
 	}
 	fmt.Printf("Writing to file %s %d bytes\n", outputFile, len(data))
 	err := ioutil.WriteFile(outputFile, data, 0644)
@@ -474,6 +513,7 @@ var (
 	scrape   = flag.String("scrape", "scene", "Scrape performer if \"perf\", scene otherwise")
 	verb     = flag.Bool("verb", false, "Verbose mode. Set to true (-verb=true) to enable")
 	urlsFile = flag.String("urls", "", "Optional urls file to use for generating")
+	images   = flag.Bool("img", false, "Save images. Set to true (-img=true or -img) to enable")
 )
 
 func main() {
@@ -488,6 +528,7 @@ func main() {
 	}
 
 	verbose = *verb
+	saveImages = *images
 
 	if *action == "gen" { // generate yaml files for the urls given
 		if len(urls) < 1 && (urlsFile == nil || *urlsFile == "") {
@@ -523,7 +564,7 @@ func main() {
 			//fetch and compare performer data first
 			for _, performer := range data.PData {
 				verifyPerformerMap := performer.PerformerData.toMap()
-				scraped := scrapePerformerByUrl(performer.PerformerURL, *stash)
+				scraped := scrapePerformerByUrl(performer.PerformerURL, *stash, false)
 				if scraped == nil {
 					fmt.Printf("No scraped data for %s\n ", performer.PerformerURL)
 					continue
@@ -548,7 +589,7 @@ func main() {
 
 				scene.SceneData.toMaps(simpleMap, studioMap, &moviesMap, &tagsMap, &performersMap)
 
-				scraped := scrapeSceneByUrl(scene.SceneURL, *stash)
+				scraped := scrapeSceneByUrl(scene.SceneURL, *stash, false)
 				if scraped == nil {
 					fmt.Printf("Data differs. No scraped data for %s\n ", scene.SceneURL)
 					continue

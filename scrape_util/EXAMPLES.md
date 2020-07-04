@@ -16,6 +16,12 @@ creates a various_scenes.yml file containing info from various scene scrapers.
 
 same as above but reading the urls from a file (one url per line)
 
+
+`/scrape -urls="urls_to_scrape.urls" -img`
+
+scrapes scenes reading the urls from a file and saves the images
+
+
 `./scrape -action="test" -file="performers_freeones.yml"`
 
 reads the performers_freeones.yml file and compares each entry there with "fresh" scraped data from stash
@@ -29,3 +35,4 @@ reads the performers_freeones.yml file and compares each entry there with "fresh
  some sites use caching for images (with different quality) so while images are visually the same the md5 can be different 
  
  use `-stash="http://mystash.com:9998"` to set stash's url , default is  `"http://localhost:9998"`
+

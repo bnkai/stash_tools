@@ -23,6 +23,7 @@ const defaultStashURL = "http://localhost:9998"
 
 var verbose = false
 var saveImages = false
+var delay = 5 * time.Second
 
 type stringMap map[string]string
 
@@ -355,6 +356,7 @@ func scrapePerformersByUrl(urls []string, stash string, saveImg bool) []byte {
 	var performers []ScrapePerformerData
 
 	for _, url := range urls {
+		time.Sleep(delay)
 		performer := scrapePerformerByUrl(url, stash, saveImages)
 		t := ScrapePerformerData{PerformerURL: url, PerformerData: *performer}
 		performers = append(performers, t)
@@ -402,6 +404,7 @@ func scrapeSceneByUrl(url string, stash string, saveImg bool) *ScrapedScene {
 func scrapeScenesByUrl(urls []string, stash string, saveImg bool) []byte {
 	var scenes []ScrapeSceneData
 	for _, url := range urls {
+		time.Sleep(delay)
 		scene := scrapeSceneByUrl(url, stash, saveImg)
 		t := ScrapeSceneData{SceneURL: url, SceneData: *scene}
 		scenes = append(scenes, t)
